@@ -1,1 +1,1 @@
-echo "python3-dev" > packages.txt
+python3-dev
