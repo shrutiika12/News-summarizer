@@ -1,6 +1,6 @@
 import streamlit as st
 from gnews import GNews
-from transformers import BartForConditionalGeneration, BartTokenizer
+import requests as req
 from rouge_score import rouge_scorer
 import nltk
 import random
@@ -13,26 +13,39 @@ st.set_page_config(
     page_icon="📰",
     layout="wide"
 )
-# download nltk data
+
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('punkt_tab', quiet=True)
 nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 
-
 # ─────────────────────────────────────────
-# Load model (cached so it loads only once)
+# Hugging Face API (no torch needed!)
 # ─────────────────────────────────────────
-@st.cache_resource
-def load_model():
-    model_name = "facebook/bart-large-cnn"
-    tokenizer = BartTokenizer.from_pretrained(model_name)
-    model = BartForConditionalGeneration.from_pretrained(model_name)
-    return tokenizer, model
+HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+HF_HEADERS = {"Authorization": f"Bearer {st.secrets['HF_TOKEN']}"}
 
-tokenizer, model = load_model()
-
+def summarize_via_api(text):
+    words = text.split()
+    if len(words) < 30:
+        return text
+    if len(words) > 700:
+        text = ' '.join(words[:700])
+    try:
+        response = req.post(
+            HF_API_URL,
+            headers=HF_HEADERS,
+            json={"inputs": text, "parameters": {"max_length": 80, "min_length": 20}}
+        )
+        result = response.json()
+        if isinstance(result, list):
+            return result[0]['summary_text']
+        elif 'error' in result:
+            return f"API error: {result['error']}"
+        return text
+    except Exception as e:
+        return f"Error: {e}"
 
 # ─────────────────────────────────────────
 # Helper functions
@@ -56,29 +69,6 @@ def fetch_news(topic, num_articles=5):
         except Exception:
             pass
     return articles
-
-
-def summarize_article(text):
-    words = text.split()
-    if len(words) < 30:
-        return text
-    if len(words) > 700:
-        text = ' '.join(words[:700])
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        max_length=1024,
-        truncation=True
-    )
-    summary_ids = model.generate(
-        inputs["input_ids"],
-        max_length=80,
-        min_length=20,
-        length_penalty=2.0,
-        num_beams=4,
-        early_stopping=True
-    )
-    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
 
 def generate_mcqs(summary, num_questions=3):
@@ -139,17 +129,10 @@ def calculate_rouge(generated, reference):
 # ─────────────────────────────────────────
 # Streamlit UI
 # ─────────────────────────────────────────
-st.set_page_config(
-    page_title="AI News Summarizer",
-    page_icon="📰",
-    layout="wide"
-)
-
 st.title("📰 AI News Summarizer")
 st.markdown("*Fetch live news → AI summarizes → Auto-generates MCQs for exam prep*")
 st.markdown("---")
 
-# sidebar
 with st.sidebar:
     st.header("⚙️ Settings")
     num_articles = st.slider("Number of articles", 1, 10, 5)
@@ -157,40 +140,32 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("Built with Hugging Face BART + GNews API")
 
-# main input
 topic = st.text_input(
     "🔍 Enter a news topic",
     placeholder="e.g. cricket, India economy, technology..."
 )
 
 if st.button("🚀 Generate Summaries & MCQs", type="primary"):
-    
     if not topic:
         st.warning("Please enter a topic first!")
-    
     else:
-        # fetch news
         with st.spinner(f"📡 Fetching news about '{topic}'..."):
             articles = fetch_news(topic, num_articles)
-        
+
         if not articles:
             st.error("No articles found. Try a different topic!")
-        
         else:
             st.success(f"✅ Fetched {len(articles)} articles!")
-            
             all_scores = []
-            
+
             for i, article in enumerate(articles):
-                st.markdown(f"---")
+                st.markdown("---")
                 st.subheader(f"📌 Article {i+1}: {article['title'][:70]}...")
                 st.caption(f"Source: {article['source']} | [Read full article]({article['url']})")
-                
-                # summarize
+
                 with st.spinner("🤖 Summarizing..."):
-                    summary = summarize_article(article['text'])
-                
-                # show original and summary side by side
+                    summary = summarize_via_api(article['text'])
+
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("**📄 Original Text**")
@@ -198,22 +173,20 @@ if st.button("🚀 Generate Summaries & MCQs", type="primary"):
                 with col2:
                     st.markdown("**✨ AI Summary**")
                     st.success(summary)
-                
-                # ROUGE score
+
                 scores = calculate_rouge(summary, article['text'])
                 all_scores.append(scores)
-                
+
                 st.markdown(
                     f"📊 **ROUGE Scores** — "
                     f"ROUGE-1: `{scores['rouge1']}` | "
                     f"ROUGE-2: `{scores['rouge2']}` | "
                     f"ROUGE-L: `{scores['rougeL']}`"
                 )
-                
-                # MCQs
+
                 st.markdown("**❓ Practice MCQs**")
                 mcqs = generate_mcqs(summary, num_mcqs)
-                
+
                 if not mcqs:
                     st.warning("Not enough content to generate MCQs.")
                 else:
@@ -229,20 +202,19 @@ if st.button("🚀 Generate Summaries & MCQs", type="primary"):
                             st.success("✅ Correct!")
                         else:
                             st.error(f"❌ Wrong! Answer is: {mcq['answer']}")
-            
-            # overall ROUGE
+
             if all_scores:
                 st.markdown("---")
                 st.subheader("📊 Overall ROUGE Score Summary")
                 avg1 = round(sum(s['rouge1'] for s in all_scores) / len(all_scores), 4)
                 avg2 = round(sum(s['rouge2'] for s in all_scores) / len(all_scores), 4)
                 avgL = round(sum(s['rougeL'] for s in all_scores) / len(all_scores), 4)
-                
+
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Avg ROUGE-1", avg1)
                 c2.metric("Avg ROUGE-2", avg2)
                 c3.metric("Avg ROUGE-L", avgL)
-                
+
                 st.info(
                     f'📝 Resume line: "Achieving summarization accuracy of '
                     f'ROUGE score {avg1} across {len(articles)} articles processed"'
