@@ -1,0 +1,10 @@
+transformers
+torch
+gnews
+streamlit
+rouge-score
+nltk
+sentencepiece
+requests
+beautifulsoup4
+rake-nltk
