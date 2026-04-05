@@ -1,5 +1,5 @@
 transformers==4.40.0
-torch==2.2.0
+torch==2.2.2+cpu --extra-index-url https://download.pytorch.org/whl/cpu
 gnews==0.3.7
 streamlit==1.32.0
 rouge-score==0.1.2
