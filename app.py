@@ -8,6 +8,11 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 from nltk.tag import pos_tag
 
+st.set_page_config(
+    page_title="AI News Summarizer",
+    page_icon="📰",
+    layout="wide"
+)
 # download nltk data
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
