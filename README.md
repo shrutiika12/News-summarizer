@@ -9,14 +9,6 @@
 
 ---
 
-## 🔗 Live Demo
-
-👉 **[Click here to try the app](https://your-app-link.streamlit.app)**
-
-> Replace the link above with your actual Streamlit deployment URL after deploying.
-
----
-
 ## 📌 About the Project
 
 This is a **Deep Learning project** that combines multiple AI and NLP techniques into one end-to-end pipeline:
